@@ -17,7 +17,7 @@ from functools import partial
 import itertools
 from tqdm import tqdm
 from torchvision.utils import make_grid
-from pytorch_lightning.utilities.distributed import rank_zero_only
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from omegaconf import ListConfig
 
 from ldm.util import log_txt_as_img, exists, default, ismap, isimage, mean_flat, count_params, instantiate_from_config
@@ -204,7 +204,7 @@ class DDPM(pl.LightningModule):
                 if context is not None:
                     print(f"{context}: Restored training weights")
 
-    @torch.no_grad()
+    
     def init_from_ckpt(self, path, ignore_keys=list(), only_model=False):
         sd = torch.load(path, map_location="cpu")
         if "state_dict" in list(sd.keys()):
@@ -320,7 +320,7 @@ class DDPM(pl.LightningModule):
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start=x_recon, x_t=x, t=t)
         return model_mean, posterior_variance, posterior_log_variance
 
-    @torch.no_grad()
+    
     def p_sample(self, x, t, clip_denoised=True, repeat_noise=False):
         b, *_, device = *x.shape, x.device
         model_mean, _, model_log_variance = self.p_mean_variance(x=x, t=t, clip_denoised=clip_denoised)
@@ -329,7 +329,7 @@ class DDPM(pl.LightningModule):
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
-    @torch.no_grad()
+    
     def p_sample_loop(self, shape, return_intermediates=False):
         device = self.betas.device
         b = shape[0]
@@ -344,7 +344,7 @@ class DDPM(pl.LightningModule):
             return img, intermediates
         return img
 
-    @torch.no_grad()
+    
     def sample(self, batch_size=16, return_intermediates=False):
         image_size = self.image_size
         channels = self.channels
@@ -451,7 +451,7 @@ class DDPM(pl.LightningModule):
 
         return loss
 
-    @torch.no_grad()
+    
     def validation_step(self, batch, batch_idx):
         _, loss_dict_no_ema = self.shared_step(batch)
         with self.ema_scope():
@@ -471,7 +471,7 @@ class DDPM(pl.LightningModule):
         denoise_grid = make_grid(denoise_grid, nrow=n_imgs_per_row)
         return denoise_grid
 
-    @torch.no_grad()
+    
     def log_images(self, batch, N=8, n_row=2, sample=True, return_keys=None, **kwargs):
         log = dict()
         x = self.get_input(batch, self.first_stage_key)
@@ -585,7 +585,7 @@ class LatentDiffusion(DDPM):
         self.cond_ids[:self.num_timesteps_cond] = ids
 
     @rank_zero_only
-    @torch.no_grad()
+    
     def on_train_batch_start(self, batch, batch_idx, dataloader_idx):
         # only for very first batch
         if self.scale_by_std and self.current_epoch == 0 and self.global_step == 0 and batch_idx == 0 and not self.restarted_from_ckpt:
@@ -659,7 +659,7 @@ class LatentDiffusion(DDPM):
             raise NotImplementedError(f"encoder_posterior of type '{type(encoder_posterior)}' not yet implemented")
         return self.scale_factor * z
 
-    def get_learned_conditioning(self, c):
+    def get_learned_conditioning(self, c, mask=None):
         if self.cond_stage_forward is None:
             if hasattr(self.cond_stage_model, 'encode') and callable(self.cond_stage_model.encode):
                 c = self.cond_stage_model.encode(c)
@@ -761,7 +761,7 @@ class LatentDiffusion(DDPM):
 
         return fold, unfold, normalization, weighting
 
-    @torch.no_grad()
+    
     def get_input(self, batch, k, return_first_stage_outputs=False, force_c_encode=False,
                   cond_key=None, return_original_cond=False, bs=None, return_x=False):
         x = super().get_input(batch, k)
@@ -814,7 +814,6 @@ class LatentDiffusion(DDPM):
             out.append(xc)
         return out
 
-    @torch.no_grad()
     def decode_first_stage(self, z, predict_cids=False, force_not_quantize=False):
         if predict_cids:
             if z.dim() == 4:
@@ -825,7 +824,7 @@ class LatentDiffusion(DDPM):
         z = 1. / self.scale_factor * z
         return self.first_stage_model.decode(z)
 
-    @torch.no_grad()
+    
     def encode_first_stage(self, x):
         return self.first_stage_model.encode(x)
 
@@ -948,7 +947,7 @@ class LatentDiffusion(DDPM):
         else:
             return model_mean, posterior_variance, posterior_log_variance
 
-    @torch.no_grad()
+    
     def p_sample(self, x, c, t, clip_denoised=False, repeat_noise=False,
                  return_codebook_ids=False, quantize_denoised=False, return_x0=False,
                  temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None):
@@ -979,7 +978,7 @@ class LatentDiffusion(DDPM):
         else:
             return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
 
-    @torch.no_grad()
+    
     def progressive_denoising(self, cond, shape, verbose=True, callback=None, quantize_denoised=False,
                               img_callback=None, mask=None, x0=None, temperature=1., noise_dropout=0.,
                               score_corrector=None, corrector_kwargs=None, batch_size=None, x_T=None, start_T=None,
@@ -1035,7 +1034,7 @@ class LatentDiffusion(DDPM):
             if img_callback: img_callback(img, i)
         return img, intermediates
 
-    @torch.no_grad()
+    
     def p_sample_loop(self, cond, shape, return_intermediates=False,
                       x_T=None, verbose=True, callback=None, timesteps=None, quantize_denoised=False,
                       mask=None, x0=None, img_callback=None, start_T=None,
@@ -1086,7 +1085,7 @@ class LatentDiffusion(DDPM):
             return img, intermediates
         return img
 
-    @torch.no_grad()
+    
     def sample(self, cond, batch_size=16, return_intermediates=False, x_T=None,
                verbose=True, timesteps=None, quantize_denoised=False,
                mask=None, x0=None, shape=None, **kwargs):
@@ -1104,7 +1103,7 @@ class LatentDiffusion(DDPM):
                                   verbose=verbose, timesteps=timesteps, quantize_denoised=quantize_denoised,
                                   mask=mask, x0=x0)
 
-    @torch.no_grad()
+    
     def sample_log(self, cond, batch_size, ddim, ddim_steps, **kwargs):
         if ddim:
             ddim_sampler = DDIMSampler(self)
@@ -1118,7 +1117,7 @@ class LatentDiffusion(DDPM):
 
         return samples, intermediates
 
-    @torch.no_grad()
+    
     def get_unconditional_conditioning(self, batch_size, null_label=None):
         if null_label is not None:
             xc = null_label
@@ -1143,7 +1142,7 @@ class LatentDiffusion(DDPM):
             c = repeat(c, '1 ... -> b ...', b=batch_size).to(self.device)
         return c
 
-    @torch.no_grad()
+    
     def log_images(self, batch, N=8, n_row=4, sample=True, ddim_steps=50, ddim_eta=0., return_keys=None,
                    quantize_denoised=True, inpaint=True, plot_denoise_rows=False, plot_progressive_rows=True,
                    plot_diffusion_rows=True, unconditional_guidance_scale=1., unconditional_guidance_label=None,
@@ -1297,7 +1296,7 @@ class LatentDiffusion(DDPM):
             return [opt], scheduler
         return opt
 
-    @torch.no_grad()
+    
     def to_rgb(self, x):
         x = x.float()
         if not hasattr(self, "colorize"):
@@ -1371,7 +1370,7 @@ class LatentUpscaleDiffusion(LatentDiffusion):
         for param in self.low_scale_model.parameters():
             param.requires_grad = False
 
-    @torch.no_grad()
+    
     def get_input(self, batch, k, cond_key=None, bs=None, log_mode=False):
         if not log_mode:
             z, c = super().get_input(batch, k, force_c_encode=True, bs=bs)
@@ -1393,7 +1392,7 @@ class LatentUpscaleDiffusion(LatentDiffusion):
             return z, all_conds, x, xrec, xc, x_low, x_low_rec, noise_level
         return z, all_conds
 
-    @torch.no_grad()
+    
     def log_images(self, batch, N=8, n_row=4, sample=True, ddim_steps=200, ddim_eta=1., return_keys=None,
                    plot_denoise_rows=False, plot_progressive_rows=True, plot_diffusion_rows=True,
                    unconditional_guidance_scale=1., unconditional_guidance_label=None, use_ema_scope=True,
@@ -1553,7 +1552,7 @@ class LatentFinetuneDiffusion(LatentDiffusion):
         if len(unexpected) > 0:
             print(f"Unexpected Keys: {unexpected}")
 
-    @torch.no_grad()
+    
     def log_images(self, batch, N=8, n_row=4, sample=True, ddim_steps=200, ddim_eta=1., return_keys=None,
                    quantize_denoised=True, inpaint=True, plot_denoise_rows=False, plot_progressive_rows=True,
                    plot_diffusion_rows=True, unconditional_guidance_scale=1., unconditional_guidance_label=None,
@@ -1651,7 +1650,7 @@ class LatentInpaintDiffusion(LatentFinetuneDiffusion):
         self.masked_image_key = masked_image_key
         assert self.masked_image_key in concat_keys
 
-    @torch.no_grad()
+    
     def get_input(self, batch, k, cond_key=None, bs=None, return_first_stage_outputs=False):
         # note: restricted to non-trainable encoders currently
         assert not self.cond_stage_trainable, 'trainable cond stages not yet supported for inpainting'
@@ -1677,7 +1676,7 @@ class LatentInpaintDiffusion(LatentFinetuneDiffusion):
             return z, all_conds, x, xrec, xc
         return z, all_conds
 
-    @torch.no_grad()
+    
     def log_images(self, *args, **kwargs):
         log = super(LatentInpaintDiffusion, self).log_images(*args, **kwargs)
         log["masked_image"] = rearrange(args[0]["masked_image"],
@@ -1695,7 +1694,7 @@ class LatentDepth2ImageDiffusion(LatentFinetuneDiffusion):
         self.depth_model = instantiate_from_config(depth_stage_config)
         self.depth_stage_key = concat_keys[0]
 
-    @torch.no_grad()
+    
     def get_input(self, batch, k, cond_key=None, bs=None, return_first_stage_outputs=False):
         # note: restricted to non-trainable encoders currently
         assert not self.cond_stage_trainable, 'trainable cond stages not yet supported for depth2img'
@@ -1728,7 +1727,7 @@ class LatentDepth2ImageDiffusion(LatentFinetuneDiffusion):
             return z, all_conds, x, xrec, xc
         return z, all_conds
 
-    @torch.no_grad()
+    
     def log_images(self, *args, **kwargs):
         log = super().log_images(*args, **kwargs)
         depth = self.depth_model(args[0][self.depth_stage_key])
@@ -1760,7 +1759,7 @@ class LatentUpscaleFinetuneDiffusion(LatentFinetuneDiffusion):
         for param in self.low_scale_model.parameters():
             param.requires_grad = False
 
-    @torch.no_grad()
+    
     def get_input(self, batch, k, cond_key=None, bs=None, return_first_stage_outputs=False):
         # note: restricted to non-trainable encoders currently
         assert not self.cond_stage_trainable, 'trainable cond stages not yet supported for upscaling-ft'
@@ -1794,7 +1793,7 @@ class LatentUpscaleFinetuneDiffusion(LatentFinetuneDiffusion):
             return z, all_conds, x, xrec, xc
         return z, all_conds
 
-    @torch.no_grad()
+    
     def log_images(self, *args, **kwargs):
         log = super().log_images(*args, **kwargs)
         log["lr"] = rearrange(args[0]["lr"], 'b h w c -> b c h w')
@@ -1847,7 +1846,7 @@ class ImageEmbeddingConditionedLatentDiffusion(LatentDiffusion):
         noutputs.extend(outputs[2:])
         return noutputs
 
-    @torch.no_grad()
+    
     def log_images(self, batch, N=8, n_row=4, **kwargs):
         log = dict()
         z, c, x, xrec, xc = self.get_input(batch, self.first_stage_key, bs=N, return_first_stage_outputs=True,
