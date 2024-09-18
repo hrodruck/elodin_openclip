@@ -44,6 +44,8 @@ def custom_openclip_preprocess(img):
 def compare_txt_img(model, preprocess, tokenizer, img, txt):
     img = preprocess(img).unsqueeze(0) #this is a custom preprocess function based on openclip's notebook
     txt = tokenizer(txt).cuda()
+    #debug
+    print(f'tokenized text is {txt=}')
     img_features = model.encode_image(img)
     txt_features = model.encode_text(txt)
     return -img_features @ txt_features.T
@@ -392,13 +394,13 @@ def main(opt):
                     prompts = list(prompts)
                         
                 initial_namecon = model.cond_stage_model(prompts).requires_grad_()
-                optimizer = optim.Adam([namecon], lr = 4e-1)
+                optimizer = optim.Adam([namecon], lr = 8e-1)
                 grad_acc = 1
 
 
-                #target_img = "tgt.jpg"
-                target_phrase = "Photo of a gem. A blue, pretty precious stone."
-                target = target_phrase
+                target_img = "tgt.jpg"
+                #target_phrase = "Photo of a gem. A blue, pretty precious stone."
+                target = target_img
                 
                 openclip_model, _, openclip_preprocess = open_clip.create_model_and_transforms('ViT-H-14', pretrained='laion2b_s32b_b79k', precision='fp16', device='cuda')
                 for param in openclip_model.parameters():
