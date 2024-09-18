@@ -9,6 +9,11 @@ __pycache__/
 # C extensions
 *.so
 
+# Image files
+.jpg
+.png
+.jpeg
+
 # General MacOS
 .DS_Store
 .AppleDouble
